@@ -213,6 +213,112 @@ class EmailListChecker
     }
 
     /**
+     * Upload file for batch verification (CSV, TXT, or XLSX)
+     *
+     * @param string $filePath Path to file (CSV, TXT, or XLSX)
+     * @param string|null $name Name for this batch
+     * @param string|null $callbackUrl Webhook URL for completion notification
+     * @param bool $autoStart Start verification immediately (default: true)
+     * @return array Batch submission result
+     * @throws EmailListCheckerException
+     */
+    public function verifyBatchFile(
+        string $filePath,
+        ?string $name = null,
+        ?string $callbackUrl = null,
+        bool $autoStart = true
+    ): array {
+        if (!file_exists($filePath)) {
+            throw new EmailListCheckerException("File not found: {$filePath}");
+        }
+
+        $multipart = [
+            [
+                'name' => 'file',
+                'contents' => fopen($filePath, 'r'),
+                'filename' => basename($filePath),
+            ],
+            [
+                'name' => 'auto_start',
+                'contents' => $autoStart ? 'true' : 'false',
+            ],
+        ];
+
+        if ($name !== null) {
+            $multipart[] = [
+                'name' => 'name',
+                'contents' => $name,
+            ];
+        }
+
+        if ($callbackUrl !== null) {
+            $multipart[] = [
+                'name' => 'callback_url',
+                'contents' => $callbackUrl,
+            ];
+        }
+
+        try {
+            $client = new Client([
+                'base_uri' => $this->baseUrl,
+                'timeout' => $this->timeout,
+            ]);
+
+            $response = $client->request('POST', '/verify/batch/upload', [
+                'headers' => [
+                    'Authorization' => 'Bearer ' . $this->apiKey,
+                ],
+                'multipart' => $multipart,
+            ]);
+
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            return $data['data'] ?? $data;
+        } catch (RequestException $e) {
+            $statusCode = $e->getCode();
+            $responseBody = null;
+
+            if ($e->hasResponse()) {
+                $statusCode = $e->getResponse()->getStatusCode();
+                $responseBody = json_decode($e->getResponse()->getBody()->getContents(), true);
+            }
+
+            // Handle errors
+            if ($statusCode === 401) {
+                throw new AuthenticationException(
+                    $responseBody['error'] ?? 'Invalid API key',
+                    $statusCode,
+                    $responseBody
+                );
+            }
+
+            if ($statusCode === 402) {
+                throw new InsufficientCreditsException(
+                    $responseBody['error'] ?? 'Insufficient credits',
+                    $statusCode,
+                    $responseBody
+                );
+            }
+
+            if ($statusCode === 422) {
+                throw new ValidationException(
+                    $responseBody['message'] ?? 'Validation error',
+                    $statusCode,
+                    $responseBody
+                );
+            }
+
+            throw new ApiException(
+                $responseBody['error'] ?? sprintf('API error: %d', $statusCode),
+                $statusCode,
+                $responseBody
+            );
+        } catch (GuzzleException $e) {
+            throw new EmailListCheckerException('Request failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Get batch verification status
      *
      * @param int $batchId Batch ID

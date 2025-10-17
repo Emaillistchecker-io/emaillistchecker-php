@@ -148,6 +148,56 @@ foreach ($results['data'] as $emailData) {
 }
 ```
 
+### Batch Verification with File Upload
+
+You can also upload CSV, TXT, or XLSX files for batch verification:
+
+```php
+<?php
+
+use EmailListChecker\EmailListChecker;
+
+$client = new EmailListChecker('your_api_key');
+
+// Upload file for batch verification
+$batch = $client->verifyBatchFile(
+    'path/to/emails.csv',
+    'My Email List',
+    null,  // callback URL (optional)
+    true   // auto-start
+);
+
+$batchId = $batch['id'];
+echo "Batch ID: {$batchId}\n";
+echo "Total emails: {$batch['total_emails']}\n";
+echo "Filename: {$batch['filename']}\n";
+
+// Check progress (same as JSON batch)
+while (true) {
+    $status = $client->getBatchStatus($batchId);
+    echo "Progress: {$status['progress']}%\n";
+
+    if ($status['status'] === 'completed') {
+        break;
+    }
+
+    sleep(5);
+}
+
+// Download results
+$results = $client->getBatchResults($batchId, 'csv', 'valid');
+```
+
+**Supported file formats:**
+- CSV (.csv) - Comma-separated values
+- TXT (.txt) - Plain text, one email per line
+- Excel (.xlsx, .xls) - Excel spreadsheet
+
+**File requirements:**
+- Max file size: 10MB
+- Max emails: 10,000 per file
+- Files are automatically parsed to extract emails
+
 ### Email Finder
 
 ```php
